@@ -1,0 +1,889 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Transformer 核心创新 - 自注意力机制可视化</title>
+    <style>
+        :root {
+            --bg: #f8fafc;
+            --surface: #ffffff;
+            --text: #1e293b;
+            --text-secondary: #64748b;
+            --primary: #4f46e5;
+            --primary-light: #818cf8;
+            --warm-low: #e2e8f0;
+            --warm-mid: #fbbf24;
+            --warm-high: #f59e0b;
+            --warm-top: #ef4444;
+            --accent-glow: #6366f1;
+            --card-shadow: 0 1px 3px rgba(0, 0, 0, 0.06), 0 1px 2px rgba(0, 0, 0, 0.04);
+            --card-shadow-hover: 0 10px 25px rgba(79, 70, 229, 0.15), 0 4px 10px rgba(79, 70, 229, 0.08);
+            --card-shadow-selected: 0 0 0 3px rgba(99, 102, 241, 0.35), 0 8px 30px rgba(99, 102, 241, 0.25);
+            --radius: 14px;
+            --radius-sm: 10px;
+            --transition: 0.35s cubic-bezier(0.22, 0.61, 0.36, 1);
+            --transition-fast: 0.2s cubic-bezier(0.22, 0.61, 0.36, 1);
+            --font-mono: 'SF Mono', 'Cascadia Code', 'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 24px;
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 1050px;
+            background: var(--surface);
+            border-radius: 24px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.08), 0 4px 16px rgba(0, 0, 0, 0.04);
+            padding: 40px 36px 36px;
+            position: relative;
+            overflow: hidden;
+        }
+
+        /* 顶部装饰条 */
+        .container::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 4px;
+            background: linear-gradient(90deg, #6366f1, #8b5cf6, #a78bfa, #6366f1);
+            background-size: 200% 100%;
+            animation: shimmer 4s ease-in-out infinite;
+        }
+        @keyframes shimmer {
+            0%,
+            100% {
+                background-position: 0% 50%;
+            }
+            50% {
+                background-position: 100% 50%;
+            }
+        }
+
+        /* 头部 */
+        .header {
+            text-align: center;
+            margin-bottom: 28px;
+        }
+        .header .icon-row {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            margin-bottom: 8px;
+        }
+        .header .icon-circle {
+            width: 42px;
+            height: 42px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #6366f1, #8b5cf6);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 20px;
+            color: #fff;
+            box-shadow: 0 6px 20px rgba(99, 102, 241, 0.35);
+        }
+        .header h1 {
+            font-size: 1.75rem;
+            font-weight: 700;
+            letter-spacing: -0.02em;
+            color: #1e293b;
+            line-height: 1.3;
+        }
+        .header h1 span {
+            background: linear-gradient(135deg, #6366f1, #8b5cf6);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        .header .subtitle {
+            font-size: 0.95rem;
+            color: var(--text-secondary);
+            margin-top: 4px;
+            letter-spacing: 0.01em;
+        }
+
+        /* 模式切换 */
+        .mode-toggle-row {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 12px;
+            margin-bottom: 24px;
+            flex-wrap: wrap;
+        }
+        .mode-toggle-row .label-text {
+            font-size: 0.9rem;
+            font-weight: 600;
+            color: #475569;
+            letter-spacing: 0.02em;
+        }
+        .mode-toggle {
+            display: flex;
+            background: #f1f5f9;
+            border-radius: 30px;
+            padding: 4px;
+            gap: 2px;
+            box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.06);
+        }
+        .mode-toggle button {
+            all: unset;
+            cursor: pointer;
+            padding: 9px 22px;
+            border-radius: 26px;
+            font-size: 0.9rem;
+            font-weight: 600;
+            letter-spacing: 0.02em;
+            transition: var(--transition-fast);
+            color: #64748b;
+            white-space: nowrap;
+            position: relative;
+        }
+        .mode-toggle button.active {
+            background: #fff;
+            color: #4f46e5;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+        }
+        .mode-toggle button:hover:not(.active) {
+            color: #334155;
+        }
+        .mode-badge {
+            display: inline-block;
+            font-size: 0.7rem;
+            font-weight: 700;
+            padding: 3px 10px;
+            border-radius: 20px;
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
+        }
+        .badge-transformer {
+            background: #eef2ff;
+            color: #4f46e5;
+        }
+        .badge-rnn {
+            background: #fef3c7;
+            color: #d97706;
+        }
+
+        /* 展示区 */
+        .demo-area {
+            position: relative;
+            margin-bottom: 20px;
+            min-height: 200px;
+        }
+        .token-row {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            flex-wrap: wrap;
+            position: relative;
+            z-index: 2;
+            padding: 10px 0;
+        }
+        .token-card {
+            position: relative;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-width: 70px;
+            padding: 14px 12px;
+            border-radius: var(--radius-sm);
+            background: #fff;
+            border: 2px solid #e2e8f0;
+            cursor: pointer;
+            transition: var(--transition);
+            box-shadow: var(--card-shadow);
+            user-select: none;
+            -webkit-tap-highlight-color: transparent;
+            z-index: 2;
+        }
+        .token-card:hover {
+            border-color: #c7d2fe;
+            box-shadow: var(--card-shadow-hover);
+            transform: translateY(-2px);
+        }
+        .token-card.selected {
+            border-color: #6366f1;
+            box-shadow: var(--card-shadow-selected);
+            transform: translateY(-3px);
+            z-index: 10;
+            background: #fafaff;
+        }
+        .token-card .token-text {
+            font-size: 1.05rem;
+            font-weight: 700;
+            letter-spacing: 0.03em;
+            color: #1e293b;
+            transition: var(--transition-fast);
+            line-height: 1.2;
+            text-align: center;
+        }
+        .token-card .token-index {
+            font-size: 0.65rem;
+            font-weight: 500;
+            color: #94a3b8;
+            margin-top: 3px;
+            font-family: var(--font-mono);
+            letter-spacing: 0.05em;
+            transition: var(--transition-fast);
+        }
+        /* 注意力热度指示条（卡片底部） */
+        .token-card .heat-bar {
+            position: absolute;
+            bottom: -2px;
+            left: 10%;
+            right: 10%;
+            height: 4px;
+            border-radius: 0 0 8px 8px;
+            background: #e2e8f0;
+            transition: var(--transition);
+            overflow: hidden;
+        }
+        .token-card .heat-bar-fill {
+            height: 100%;
+            border-radius: 0 0 8px 8px;
+            background: #6366f1;
+            transition: var(--transition);
+            width: 0%;
+        }
+        /* 高注意力标记 */
+        .token-card.high-attention {
+            border-color: #fbbf24;
+            background: #fffbeb;
+            box-shadow: 0 0 0 2px rgba(251, 191, 36, 0.25), 0 6px 20px rgba(251, 191, 36, 0.12);
+        }
+        .token-card.high-attention .heat-bar-fill {
+            background: #f59e0b;
+        }
+        .token-card.top-attention {
+            border-color: #ef4444;
+            background: #fef2f2;
+            box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.3), 0 8px 24px rgba(239, 68, 68, 0.18);
+            animation: pulse-attention 1.6s ease-in-out infinite;
+        }
+        .token-card.top-attention .heat-bar-fill {
+            background: #ef4444;
+        }
+        @keyframes pulse-attention {
+            0%,
+            100% {
+                box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.3), 0 8px 24px rgba(239, 68, 68, 0.18);
+            }
+            50% {
+                box-shadow: 0 0 0 8px rgba(239, 68, 68, 0.08), 0 12px 32px rgba(239, 68, 68, 0.25);
+            }
+        }
+
+        /* RNN 遮罩模式 */
+        .token-card.rnn-hidden {
+            background: #f1f5f9;
+            border-color: #e2e8f0;
+            color: #cbd5e1;
+            cursor: not-allowed;
+            opacity: 0.5;
+            pointer-events: none;
+            filter: grayscale(30%);
+        }
+        .token-card.rnn-hidden .token-text {
+            color: #cbd5e1;
+        }
+        .token-card.rnn-hidden .heat-bar-fill {
+            background: #e2e8f0;
+            width: 0% !important;
+        }
+
+        /* SVG连线层 */
+        .svg-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 1;
+            pointer-events: none;
+        }
+        .svg-layer line,
+        .svg-layer path {
+            transition: opacity 0.4s ease, stroke-width 0.4s ease;
+        }
+        .attention-line {
+            stroke-linecap: round;
+            opacity: 0;
+            transition: opacity 0.5s ease, stroke 0.4s ease;
+        }
+        .attention-line.visible {
+            opacity: 1;
+        }
+        /* 流动信号动画 */
+        .flow-dot {
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+        .flow-dot.active {
+            opacity: 1;
+            animation: flowPulse 0.8s ease-in-out infinite;
+        }
+        @keyframes flowPulse {
+            0%,
+            100% {
+                r: 4;
+                opacity: 0.7;
+            }
+            50% {
+                r: 7;
+                opacity: 1;
+            }
+        }
+
+        /* 解释文字区 */
+        .explanation-area {
+            text-align: center;
+            min-height: 50px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: 16px;
+        }
+        .explanation-text {
+            font-size: 1rem;
+            font-weight: 500;
+            color: #475569;
+            letter-spacing: 0.02em;
+            line-height: 1.6;
+            transition: var(--transition-fast);
+            max-width: 650px;
+        }
+        .explanation-text strong {
+            color: #4f46e5;
+            font-weight: 700;
+        }
+        .explanation-text .highlight-warm {
+            color: #ef4444;
+            font-weight: 700;
+        }
+        .explanation-text .highlight-amber {
+            color: #f59e0b;
+            font-weight: 700;
+        }
+
+        /* 图例 */
+        .legend-row {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 16px;
+            flex-wrap: wrap;
+            font-size: 0.8rem;
+            color: #94a3b8;
+            letter-spacing: 0.02em;
+            margin-bottom: 8px;
+        }
+        .legend-dot {
+            display: inline-block;
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            margin-right: 4px;
+            vertical-align: middle;
+        }
+        .legend-dot.low {
+            background: #cbd5e1;
+        }
+        .legend-dot.mid {
+            background: #6366f1;
+        }
+        .legend-dot.high {
+            background: #f59e0b;
+        }
+        .legend-dot.top {
+            background: #ef4444;
+        }
+
+        /* 底部提示 */
+        .footer-hint {
+            text-align: center;
+            font-size: 0.8rem;
+            color: #cbd5e1;
+            letter-spacing: 0.03em;
+            margin-top: 8px;
+        }
+        .footer-hint span {
+            color: #818cf8;
+        }
+
+        /* 响应式 */
+        @media (max-width: 768px) {
+            .container {
+                padding: 28px 16px 24px;
+                border-radius: 18px;
+            }
+            .token-card {
+                min-width: 50px;
+                padding: 10px 7px;
+                border-radius: 8px;
+                gap: 4px;
+            }
+            .token-card .token-text {
+                font-size: 0.85rem;
+            }
+            .token-card .token-index {
+                font-size: 0.6rem;
+            }
+            .token-row {
+                gap: 5px;
+            }
+            .svg-layer {
+                display: none;
+            }
+            .header h1 {
+                font-size: 1.3rem;
+            }
+            .explanation-text {
+                font-size: 0.85rem;
+            }
+            .mode-toggle button {
+                padding: 7px 14px;
+                font-size: 0.78rem;
+            }
+        }
+        @media (max-width: 480px) {
+            .token-card {
+                min-width: 38px;
+                padding: 8px 4px;
+                border-radius: 7px;
+            }
+            .token-card .token-text {
+                font-size: 0.7rem;
+            }
+            .token-row {
+                gap: 3px;
+            }
+            .container {
+                padding: 20px 10px 18px;
+            }
+            .header h1 {
+                font-size: 1.15rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- 头部 -->
+        <div class="header">
+            <div class="icon-row">
+                <div class="icon-circle">👁️</div>
+            </div>
+            <h1>Transformer 核心创新：<span>自注意力</span></h1>
+            <p class="subtitle">每个词都能<strong>同时看到全文所有词</strong>，动态理解上下文</p>
+        </div>
+
+        <!-- 模式切换 -->
+        <div class="mode-toggle-row">
+            <span class="label-text">📡 查看模式：</span>
+            <div class="mode-toggle" id="modeToggle">
+                <button id="btnTransformer" class="active" data-mode="transformer">
+                    ⚡ Transformer · 同时看全文
+                </button>
+                <button id="btnRNN" data-mode="rnn">
+                    🐢 传统RNN · 逐词串行
+                </button>
+            </div>
+            <span class="mode-badge badge-transformer" id="modeBadge">并行审视</span>
+        </div>
+
+        <!-- 主展示区 -->
+        <div class="demo-area" id="demoArea">
+            <!-- SVG连线层 -->
+            <svg class="svg-layer" id="svgLayer"></svg>
+            <!-- 词卡片行 -->
+            <div class="token-row" id="tokenRow">
+                <!-- JS动态生成 -->
+            </div>
+        </div>
+
+        <!-- 图例 -->
+        <div class="legend-row">
+            <span><span class="legend-dot low"></span>低关注</span>
+            <span><span class="legend-dot mid"></span>中等</span>
+            <span><span class="legend-dot high"></span>高关注</span>
+            <span><span class="legend-dot top"></span>极高</span>
+        </div>
+
+        <!-- 解释文字 -->
+        <div class="explanation-area">
+            <p class="explanation-text" id="explanationText">
+                👆 <strong>点击任意词语</strong>，查看它如何<strong>同时关注</strong>全文所有词来理解上下文
+            </p>
+        </div>
+
+        <!-- 底部提示 -->
+        <div class="footer-hint">
+            💡 核心突破：从<span>「逐词串行回忆」</span>进化为<span>「全图并行审视」</span>——根治健忘，让大模型涌现智能
+        </div>
+    </div>
+
+    <script>
+        (function() {
+            // ============ 数据定义 ============
+            const tokens = ["那个", "人", "把", "苹果", "从", "冰箱", "里", "拿出来", "吃掉了"];
+
+            // 预设注意力权重矩阵 [queryIndex][keyIndex] — 已 softmax 归一化（行和为1）
+            // 模拟真实Transformer学到的注意力模式
+            const attentionMatrix = [
+                // query=0:"那个" → 修饰"人"
+                [0.22, 0.38, 0.05, 0.08, 0.04, 0.06, 0.03, 0.07, 0.07],
+                // query=1:"人" → 关注动作"吃掉了"、自己、"那个"
+                [0.10, 0.20, 0.06, 0.12, 0.04, 0.07, 0.03, 0.14, 0.24],
+                // query=2:"把" → 关注宾语"苹果"、动词"拿出来"
+                [0.04, 0.06, 0.08, 0.28, 0.05, 0.10, 0.04, 0.22, 0.13],
+                // query=3:"苹果" → 关键！关注"吃掉了"(消歧：水果)、"冰箱"(位置)
+                [0.04, 0.06, 0.05, 0.22, 0.03, 0.17, 0.05, 0.13, 0.25],
+                // query=4:"从" → 关注来源"冰箱"
+                [0.03, 0.04, 0.06, 0.12, 0.06, 0.32, 0.18, 0.10, 0.09],
+                // query=5:"冰箱" → 关注"里"、"从"、"拿出来"
+                [0.03, 0.04, 0.05, 0.11, 0.14, 0.18, 0.25, 0.14, 0.06],
+                // query=6:"里" → 关注"冰箱"、"从"
+                [0.03, 0.03, 0.04, 0.06, 0.16, 0.30, 0.20, 0.10, 0.08],
+                // query=7:"拿出来" → 关注"苹果"(宾语)、"冰箱"(来源)、"吃掉了"(后续)
+                [0.04, 0.06, 0.08, 0.22, 0.06, 0.14, 0.05, 0.18, 0.17],
+                // query=8:"吃掉了" → 关注"苹果"(宾语)、"人"(主语)
+                [0.04, 0.20, 0.03, 0.30, 0.02, 0.06, 0.02, 0.14, 0.19],
+            ];
+
+            // ============ DOM引用 ============
+            const tokenRow = document.getElementById('tokenRow');
+            const svgLayer = document.getElementById('svgLayer');
+            const demoArea = document.getElementById('demoArea');
+            const explanationText = document.getElementById('explanationText');
+            const btnTransformer = document.getElementById('btnTransformer');
+            const btnRNN = document.getElementById('btnRNN');
+            const modeBadge = document.getElementById('modeBadge');
+
+            // ============ 状态 ============
+            let currentMode = 'transformer'; // 'transformer' | 'rnn'
+            let selectedTokenIndex = 3; // 默认选中"苹果"（最有趣的案例）
+            let tokenCardElements = [];
+
+            // ============ 解释文字库 ============
+            const explanations = {
+                0: '「<strong>那个</strong>」最关注 <strong style="color:#4f46e5;">"人"</strong>（注意力38%），它知道自己是指示代词，修饰的是后面的"人"。',
+                1: '「<strong>人</strong>」同时关注 <strong style="color:#ef4444;">"吃掉了"</strong>（24%）和 <strong style="color:#f59e0b;">"拿出来"</strong>（14%），理解自己是动作的主语。',
+                2: '「<strong>把</strong>」高度关注 <strong style="color:#ef4444;">"苹果"</strong>（28%）和 <strong style="color:#f59e0b;">"拿出来"</strong>（22%），它识别出这是"把字句"结构，预判宾语和动词。',
+                3: '🔥 「<strong>苹果</strong>」同时看到 <strong style="color:#ef4444;">"吃掉了"</strong>（25%）和 <strong style="color:#f59e0b;">"冰箱"</strong>（17%），动态判断自己指的是<strong>「水果」</strong>而非「苹果公司」！这就是<strong>上下文消歧</strong>。',
+                4: '「<strong>从</strong>」主要关注 <strong style="color:#ef4444;">"冰箱"</strong>（32%）和 <strong style="color:#f59e0b;">"里"</strong>（18%），识别出空间来源关系。',
+                5: '「<strong>冰箱</strong>」关注 <strong style="color:#ef4444;">"里"</strong>（25%）和 <strong style="color:#f59e0b;">"从"</strong>（14%），理解自己是空间参照物。',
+                6: '「<strong>里</strong>」高度关注 <strong style="color:#ef4444;">"冰箱"</strong>（30%），确认自己是方位词，依附于"冰箱"。',
+                7: '「<strong>拿出来</strong>」均衡关注 <strong style="color:#ef4444;">"苹果"</strong>（22%）、<strong style="color:#f59e0b;">"吃掉了"</strong>（17%）和 <strong style="color:#f59e0b;">"冰箱"</strong>（14%），串联起完整动作链。',
+                8: '🔥 「<strong>吃掉了</strong>」最关注 <strong style="color:#ef4444;">"苹果"</strong>（30%）和 <strong style="color:#f59e0b;">"人"</strong>（20%），明确自己的宾语和主语，完整理解"谁吃了什么"。',
+            };
+
+            // ============ 渲染词卡片 ============
+            function renderTokenCards() {
+                tokenRow.innerHTML = '';
+                tokenCardElements = [];
+                tokens.forEach((token, index) => {
+                    const card = document.createElement('div');
+                    card.className = 'token-card';
+                    card.setAttribute('data-index', index);
+                    card.innerHTML = `
+                        <span class="token-text">${token}</span>
+                        <span class="token-index">${index}</span>
+                        <div class="heat-bar"><div class="heat-bar-fill"></div></div>
+                    `;
+                    card.addEventListener('click', () => onTokenClick(index));
+                    tokenRow.appendChild(card);
+                    tokenCardElements.push(card);
+                });
+            }
+
+            // ============ 更新展示 ============
+            function updateDisplay() {
+                const weights = attentionMatrix[selectedTokenIndex];
+                // 找出最高和第二高注意力
+                let sortedIndices = weights.map((w, i) => ({ w, i })).sort((a, b) => b.w - a.w);
+                const topIdx = sortedIndices[0].i;
+                const secondIdx = sortedIndices[1].i;
+
+                tokenCardElements.forEach((card, index) => {
+                    const weight = weights[index];
+                    // 清除所有特殊类
+                    card.classList.remove('selected', 'high-attention', 'top-attention', 'rnn-hidden');
+                    // 热力条宽度
+                    const heatBarFill = card.querySelector('.heat-bar-fill');
+                    heatBarFill.style.width = (weight * 100).toFixed(0) + '%';
+
+                    // 设置颜色
+                    if (weight > 0.25) {
+                        heatBarFill.style.background = '#ef4444';
+                    } else if (weight > 0.15) {
+                        heatBarFill.style.background = '#f59e0b';
+                    } else if (weight > 0.08) {
+                        heatBarFill.style.background = '#6366f1';
+                    } else if (weight > 0.03) {
+                        heatBarFill.style.background = '#94a3b8';
+                    } else {
+                        heatBarFill.style.background = '#cbd5e1';
+                    }
+
+                    // 高注意力标记
+                    if (index === topIdx && weight > 0.15) {
+                        card.classList.add('top-attention');
+                    } else if (index === secondIdx && weight > 0.12) {
+                        card.classList.add('high-attention');
+                    }
+
+                    // RNN模式：隐藏选中文后面的词
+                    if (currentMode === 'rnn' && index > selectedTokenIndex) {
+                        card.classList.add('rnn-hidden');
+                    }
+                });
+
+                // 标记选中卡片
+                tokenCardElements[selectedTokenIndex].classList.add('selected');
+
+                // 更新解释文字
+                explanationText.innerHTML = explanations[selectedTokenIndex] ||
+                    '👆 <strong>点击任意词语</strong>，查看它如何<strong>同时关注</strong>全文所有词来理解上下文';
+
+                // 更新SVG连线
+                updateSVGLines(weights, topIdx, secondIdx);
+
+                // 更新模式徽章
+                if (currentMode === 'transformer') {
+                    modeBadge.textContent = '并行审视';
+                    modeBadge.className = 'mode-badge badge-transformer';
+                } else {
+                    modeBadge.textContent = '串行回忆';
+                    modeBadge.className = 'mode-badge badge-rnn';
+                }
+            }
+
+            // ============ SVG连线绘制 ============
+            function updateSVGLines(weights, topIdx, secondIdx) {
+                svgLayer.innerHTML = '';
+                const demoRect = demoArea.getBoundingClientRect();
+                const svgWidth = demoRect.width;
+                const svgHeight = demoRect.height;
+
+                svgLayer.setAttribute('viewBox', `0 0 ${svgWidth} ${svgHeight}`);
+                svgLayer.style.width = svgWidth + 'px';
+                svgLayer.style.height = svgHeight + 'px';
+
+                // 定义渐变ID
+                const defs = document.createElementNS('http://www.w3.org/2000/svg', 'defs');
+                svgLayer.appendChild(defs);
+
+                const selectedCard = tokenCardElements[selectedTokenIndex];
+                if (!selectedCard) return;
+                const selectedRect = selectedCard.getBoundingClientRect();
+                const selectedCX = selectedRect.left - demoRect.left + selectedRect.width / 2;
+                const selectedCY = selectedRect.top - demoRect.top;
+
+                tokenCardElements.forEach((card, index) => {
+                    if (index === selectedTokenIndex) return;
+                    if (currentMode === 'rnn' && index > selectedTokenIndex) return; // RNN模式不画右侧连线
+
+                    const weight = weights[index];
+                    const cardRect = card.getBoundingClientRect();
+                    const targetCX = cardRect.left - demoRect.left + cardRect.width / 2;
+                    const targetCY = cardRect.top - demoRect.top;
+
+                    // 控制点：两点中点上方
+                    const midX = (selectedCX + targetCX) / 2;
+                    const midY = Math.min(selectedCY, targetCY) - Math.abs(targetCX - selectedCX) * 0.45 - 30;
+
+                    // 曲线路径
+                    const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+                    const d =
+                        `M ${selectedCX} ${selectedCY} Q ${midX} ${midY} ${targetCX} ${targetCY}`;
+                    path.setAttribute('d', d);
+                    path.setAttribute('fill', 'none');
+                    path.setAttribute('stroke-linecap', 'round');
+                    path.classList.add('attention-line');
+
+                    // 颜色和粗细基于权重
+                    let strokeColor, strokeWidth, opacity;
+                    if (weight > 0.25) {
+                        strokeColor = '#ef4444';
+                        strokeWidth = 3.5;
+                        opacity = 0.85;
+                    } else if (weight > 0.15) {
+                        strokeColor = '#f59e0b';
+                        strokeWidth = 2.8;
+                        opacity = 0.7;
+                    } else if (weight > 0.08) {
+                        strokeColor = '#6366f1';
+                        strokeWidth = 2;
+                        opacity = 0.5;
+                    } else if (weight > 0.03) {
+                        strokeColor = '#94a3b8';
+                        strokeWidth = 1.2;
+                        opacity = 0.3;
+                    } else {
+                        strokeColor = '#cbd5e1';
+                        strokeWidth = 0.8;
+                        opacity = 0.18;
+                    }
+
+                    path.setAttribute('stroke', strokeColor);
+                    path.setAttribute('stroke-width', strokeWidth);
+                    path.setAttribute('opacity', opacity);
+
+                    // dash动画模拟信号流动
+                    const pathLength = estimatePathLength(selectedCX, selectedCY, midX, midY, targetCX, targetCY);
+                    path.setAttribute('stroke-dasharray', `${pathLength * 0.4} ${pathLength * 0.6}`);
+                    path.setAttribute('stroke-dashoffset', '0');
+                    path.classList.add('visible');
+
+                    // 添加动画
+                    const animate = document.createElementNS('http://www.w3.org/2000/svg', 'animate');
+                    animate.setAttribute('attributeName', 'stroke-dashoffset');
+                    animate.setAttribute('from', '0');
+                    animate.setAttribute('to', pathLength);
+                    animate.setAttribute('dur', weight > 0.15 ? '1.2s' : '2.5s');
+                    animate.setAttribute('repeatCount', 'indefinite');
+                    path.appendChild(animate);
+
+                    svgLayer.appendChild(path);
+
+                    // 在高注意力线上添加流动光点
+                    if (weight > 0.12) {
+                        const dot = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+                        dot.setAttribute('r', '5');
+                        dot.setAttribute('fill', strokeColor);
+                        dot.setAttribute('cx', selectedCX);
+                        dot.setAttribute('cy', selectedCY);
+                        dot.classList.add('flow-dot', 'active');
+                        dot.setAttribute('opacity', '0.9');
+
+                        const animMotion = document.createElementNS('http://www.w3.org/2000/svg',
+                            'animateMotion');
+                        animMotion.setAttribute('path', d);
+                        animMotion.setAttribute('dur', weight > 0.2 ? '0.9s' : '1.5s');
+                        animMotion.setAttribute('repeatCount', 'indefinite');
+                        animMotion.setAttribute('begin', Math.random() * 0.5 + 's');
+                        dot.appendChild(animMotion);
+
+                        svgLayer.appendChild(dot);
+                    }
+                });
+
+                // 自注意力：在选中词上方画小环
+                const selfLoop = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+                const loopCX = selectedCX;
+                const loopCY = selectedCY - 32;
+                selfLoop.setAttribute('cx', loopCX);
+                selfLoop.setAttribute('cy', loopCY);
+                selfLoop.setAttribute('r', '10');
+                selfLoop.setAttribute('fill', 'none');
+                selfLoop.setAttribute('stroke', '#6366f1');
+                selfLoop.setAttribute('stroke-width', '2.5');
+                selfLoop.setAttribute('opacity', '0.7');
+                selfLoop.setAttribute('stroke-dasharray', '12 8');
+                selfLoop.classList.add('attention-line', 'visible');
+                const selfAnim = document.createElementNS('http://www.w3.org/2000/svg', 'animateTransform');
+                selfAnim.setAttribute('attributeName', 'transform');
+                selfAnim.setAttribute('type', 'rotate');
+                selfAnim.setAttribute('from', `0 ${loopCX} ${loopCY}`);
+                selfAnim.setAttribute('to', `360 ${loopCX} ${loopCY}`);
+                selfAnim.setAttribute('dur', '3s');
+                selfAnim.setAttribute('repeatCount', 'indefinite');
+                selfLoop.appendChild(selfAnim);
+                svgLayer.appendChild(selfLoop);
+
+                // 小标签"自关注"
+                const label = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+                label.setAttribute('x', loopCX);
+                label.setAttribute('y', loopCY - 16);
+                label.setAttribute('text-anchor', 'middle');
+                label.setAttribute('font-size', '10');
+                label.setAttribute('fill', '#818cf8');
+                label.setAttribute('font-weight', '600');
+                label.textContent = '自关注';
+                label.classList.add('attention-line', 'visible');
+                svgLayer.appendChild(label);
+            }
+
+            // 估算路径长度
+            function estimatePathLength(x1, y1, cx, cy, x2, y2) {
+                // 二次贝塞尔曲线长度近似
+                const dx1 = cx - x1;
+                const dy1 = cy - y1;
+                const dx2 = x2 - cx;
+                const dy2 = y2 - cy;
+                const chord = Math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2);
+                const contNet = Math.sqrt(dx1 ** 2 + dy1 ** 2) + Math.sqrt(dx2 ** 2 + dy2 ** 2);
+                return (contNet + chord) / 2;
+            }
+
+            // ============ 事件处理 ============
+            function onTokenClick(index) {
+                if (currentMode === 'rnn' && index > selectedTokenIndex && selectedTokenIndex !== -1) {
+                    // RNN模式下不允许点击"未来"的词，但可以切换选中
+                    // 实际上允许切换，但展示会被截断
+                }
+                selectedTokenIndex = index;
+                updateDisplay();
+            }
+
+            function switchMode(mode) {
+                currentMode = mode;
+                btnTransformer.classList.toggle('active', mode === 'transformer');
+                btnRNN.classList.toggle('active', mode === 'rnn');
+                updateDisplay();
+            }
+
+            btnTransformer.addEventListener('click', () => switchMode('transformer'));
+            btnRNN.addEventListener('click', () => switchMode('rnn'));
+
+            // ============ 窗口resize处理 ============
+            let resizeTimeout;
+            window.addEventListener('resize', () => {
+                clearTimeout(resizeTimeout);
+                resizeTimeout = setTimeout(() => {
+                    updateDisplay();
+                }, 250);
+            });
+
+            // ============ 初始化 ============
+            function init() {
+                renderTokenCards();
+                updateDisplay();
+                // 初始动画：短暂延迟后让连线显现
+                setTimeout(() => {
+                    updateDisplay();
+                }, 100);
+            }
+
+            init();
+
+            console.log('🧠 Transformer 自注意力可视化已就绪');
+            console.log('   💡 点击词语查看注意力分布 | 切换模式对比 Transformer vs RNN');
+            console.log('   🔥 试试点击"苹果"看它如何通过"吃掉了"消歧为水果');
+        })();
+    </script>
+</body>
+</html>
